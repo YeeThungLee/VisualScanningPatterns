@@ -1,0 +1,159 @@
+---
+title: "SD OF VERTICAL GAZE"
+author: "Yee Thung Lee"
+date: "2025-11-30"
+output: html_document
+---
+
+## Load Libraries
+
+```{r setup, include=FALSE}
+# LOAD LIBRARIES
+suppressPackageStartupMessages({
+  library(tidyr)
+  library(dplyr)
+  library (ggplot2)
+  library (lmerTest)
+  library (emmeans)
+  library (lme4)
+  library (viridis)
+  library (readxl)
+})
+```
+
+```{r}
+# LOAD EXCEL SHEET
+# GAZE DISPERSION
+SDGazeData <- read_excel(
+  "C:\\Users\\tsytl\\OneDrive - University of Leeds\\Paper 2 - Visual Scanning Patterns\\SD OF GAZE.xlsx",
+  sheet = "Sheet1"
+)
+
+head (SDGazeData)
+```
+
+## Define Variables for Data Analysis
+
+```{r}
+# DEFINE VARIABLE FOR DATA ANALYSIS
+
+# RENAME COLUMNS
+SDGazeData <- SDGazeData %>%
+  rename(
+    LightingConditions = `Lighting Condition`,
+    AutomationLevel = `Automation Level`,
+    SubNum = `Sub Number`,
+    RunNum = `Run Number`,
+    SDVerticalGaze = `SD Vertical Gaze (y-axis) [px]`
+  )
+
+# DEFINE COLUMNS AS FACTOR (SUBJECT ID, RUN NUMBER,INDEPENDENT VARIABLES)
+SDGazeData$SubNum <- factor (SDGazeData$SubNum)
+SDGazeData$RunNum <- factor (SDGazeData$RunNum)
+SDGazeData$LightingConditions <- factor (SDGazeData$LightingConditions)
+SDGazeData$AutomationLevel <- factor (SDGazeData$AutomationLevel)
+
+
+# DEFINE COLUMNS AS DEPENDENT VARIABLES 
+str(SDGazeData$SDVerticalGaze)
+SDGazeData$SDVerticalGaze<- as.numeric(SDGazeData$SDVerticalGaze) 
+```
+
+## Final Model (REML = TRUE)
+
+```{r}
+# FINAL MODEL
+# LIGHT, AUTOMATION, LIGHT*AUTOMATION
+
+lmm_final_model_SDVerticalGaze <- lmer(SDVerticalGaze~ LightingConditions + AutomationLevel + LightingConditions*AutomationLevel  + (1|SubNum), data = SDGazeData)
+
+summary (lmm_final_model_SDVerticalGaze)
+anova (lmm_final_model_SDVerticalGaze)
+```
+### R2 Values
+
+- The marginal R² represents the proportion of variance explained only by the fixed effects in your model.
+- The conditional R² represents the proportion of variance explained by both the fixed effects and the random effects combined.
+
+```{r}
+library (performance)
+# CALCULATE R-SQUARED VALUES 
+r2_values <- r2(lmm_final_model_SDVerticalGaze)
+print (r2_values)
+```
+
+## Assumption Check
+
+```{r}
+# ASSUMPTION CHECK
+# LIBRARY FOR NORMALITY TEST
+library (stats)
+
+residual_lmm_final_model_SDVerticalGaze <- resid(lmm_final_model_SDVerticalGaze)
+
+# KOMOLGOROV-SMIRNOV TEST (IF IS SIGNIFICANT, THEN IS NOT NORMALLY DISTRIBUTED - ASSUMPTION VIOLATED)
+ks_test <- ks.test (residual_lmm_final_model_SDVerticalGaze, "pnorm", mean (residual_lmm_final_model_SDVerticalGaze), sd (residual_lmm_final_model_SDVerticalGaze))
+print (ks_test)
+
+
+# QQ PLOT (DEVIATION FROM THE DIAGONAL LINE INDICATE NOT NORMALLY DISTRIBUTED - ASSUMPTION VIOLATED)
+qqnorm(residual_lmm_final_model_SDVerticalGaze)
+qqline(residual_lmm_final_model_SDVerticalGaze, col = "red")
+
+# Residuals vs Fitted
+plot(fitted(lmm_final_model_SDVerticalGaze),
+     resid(lmm_final_model_SDVerticalGaze),
+     xlab = "Fitted Values",
+     ylab = "Residuals",
+     main = "Residuals vs Fitted Values")
+abline(h = 0, col = "red")
+```
+
+#### Notes - Assumption MET
+
+
+### Post-Hoc Comparison
+
+#### Lighting of the Driving Environment
+
+```{r}
+
+# OBTAIN ESTIMATED MARGINAL MEANS (LIGHTING) - PAIRWISE 
+lighting_emmeans <- emmeans (lmm_final_model_SDVerticalGaze, ~ LightingConditions, type = "response")
+lighting_emmeans
+# PAIRWISE
+pairwise_lighting <- pairs (lighting_emmeans, adjust = "bonferroni", type = "response")
+pairwise_lighting
+
+```
+
+#### Level of Automation
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION) - PAIRWISE 
+automation_emmeans <- emmeans (lmm_final_model_SDVerticalGaze, ~ AutomationLevel, type = "response")
+automation_emmeans
+# PAIRWISE
+pairwise_automation <- pairs (automation_emmeans, adjust = "bonferroni", type = "response")
+pairwise_automation
+```
+
+
+
+#### Interaction Effect (Automation\*Lighting)
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION*LIGHTTING) - PAIRWISE 
+interaction_automation_lighting_emmeans <- emmeans (lmm_final_model_SDVerticalGaze, ~ AutomationLevel*LightingConditions, type = "response")
+interaction_automation_lighting_emmeans
+
+# PAIRWISE
+pairwise_interaction <- pairs (interaction_automation_lighting_emmeans, adjust = "bonferroni", type = "response")
+pairwise_interaction
+```
+
+
+
+
+
+

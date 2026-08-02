@@ -1,0 +1,172 @@
+---
+title: "Percentage of Glance Time (Right Periphery) (%)"
+author: "Yee Thung Lee"
+date: "2025-11-30"
+output: html_document
+---
+
+## Load Libraries
+
+```{r setup, include=FALSE}
+# LOAD LIBRARIES
+suppressPackageStartupMessages({
+  library(tidyr)
+  library(dplyr)
+  library (ggplot2)
+  library (lmerTest)
+  library (emmeans)
+  library (lme4)
+  library (viridis)
+  library (readxl)
+})
+```
+
+```{r}
+# LOAD EXCEL SHEET
+# % OF GLANCE TIME
+PercentageOfGlanceTimeData <- read_excel(
+  "C:\\Users\\tsytl\\OneDrive - University of Leeds\\Paper 2 - Visual Scanning Patterns\\PERCENTAGE OF GLANCE TIME ON EACH AOI.xlsx",
+  sheet = "Sheet1"
+)
+
+head (PercentageOfGlanceTimeData)
+```
+
+## Define Variables for Data Analysis
+
+```{r}
+# DEFINE VARIABLE FOR DATA ANALYSIS
+
+# RENAME COLUMNS
+PercentageOfGlanceTimeData <- PercentageOfGlanceTimeData %>%
+  rename(
+    LightingConditions = `Lighting Conditions`,
+    AutomationLevel = `Automation Level`,
+    SubNum = `Sub Number`,
+    RunNum = `Run Number`,
+    PercentageOfGlanceRightPeriphery = `Percentage of Glance Time (Right Periphery) (%)`
+  )
+
+# DEFINE COLUMNS AS FACTOR (SUBJECT ID, RUN NUMBER,INDEPENDENT VARIABLES)
+PercentageOfGlanceTimeData$SubNum <- factor (PercentageOfGlanceTimeData$SubNum)
+PercentageOfGlanceTimeData$RunNum <- factor (PercentageOfGlanceTimeData$RunNum)
+PercentageOfGlanceTimeData$LightingConditions <- factor (PercentageOfGlanceTimeData$LightingConditions)
+PercentageOfGlanceTimeData$AutomationLevel <- factor (PercentageOfGlanceTimeData$AutomationLevel)
+
+
+# DEFINE COLUMNS AS DEPENDENT VARIABLES (% GLANCE TIME ON ROAD)
+str(PercentageOfGlanceTimeData$PercentageOfGlanceRightPeriphery)
+PercentageOfGlanceTimeData$PercentageOfGlanceRightPeriphery<- as.numeric(PercentageOfGlanceTimeData$PercentageOfGlanceRightPeriphery) 
+```
+
+## Final Model (REML = TRUE)
+
+```{r}
+# FINAL MODEL
+# LIGHT, AUTOMATION, RUN, LIGHT*AUTOMATION
+
+lmm_final_model_PercentageOfGlanceRightPeriphery <- lmer(PercentageOfGlanceRightPeriphery~ LightingConditions + AutomationLevel + RunNum + LightingConditions*AutomationLevel + (1|SubNum), data = PercentageOfGlanceTimeData)
+
+summary (lmm_final_model_PercentageOfGlanceRightPeriphery)
+anova (lmm_final_model_PercentageOfGlanceRightPeriphery)
+```
+### R2 Values
+
+- The marginal R² represents the proportion of variance explained only by the fixed effects in your model.
+- The conditional R² represents the proportion of variance explained by both the fixed effects and the random effects combined.
+
+```{r}
+library (performance)
+# CALCULATE R-SQUARED VALUES 
+r2_values <- r2(lmm_final_model_PercentageOfGlanceRightPeriphery)
+print (r2_values)
+```
+
+## Assumption Check
+
+```{r}
+# ASSUMPTION CHECK
+# LIBRARY FOR NORMALITY TEST
+library (stats)
+
+residual_lmm_final_model_PercentageOfGlanceRightPeriphery <- resid(lmm_final_model_PercentageOfGlanceRightPeriphery)
+
+# KOMOLGOROV-SMIRNOV TEST (IF IS SIGNIFICANT, THEN IS NOT NORMALLY DISTRIBUTED - ASSUMPTION VIOLATED)
+ks_test <- ks.test (residual_lmm_final_model_PercentageOfGlanceRightPeriphery, "pnorm", mean (residual_lmm_final_model_PercentageOfGlanceRightPeriphery), sd (residual_lmm_final_model_PercentageOfGlanceRightPeriphery))
+print (ks_test)
+
+
+# QQ PLOT (DEVIATION FROM THE DIAGONAL LINE INDICATE NOT NORMALLY DISTRIBUTED - ASSUMPTION VIOLATED)
+qqnorm(residual_lmm_final_model_PercentageOfGlanceRightPeriphery)
+qqline(residual_lmm_final_model_PercentageOfGlanceRightPeriphery, col = "red")
+
+# Residuals vs Fitted
+plot(fitted(lmm_final_model_PercentageOfGlanceRightPeriphery),
+     resid(lmm_final_model_PercentageOfGlanceRightPeriphery),
+     xlab = "Fitted Values",
+     ylab = "Residuals",
+     main = "Residuals vs Fitted Values")
+abline(h = 0, col = "red")
+```
+
+#### Notes - Assumption Met
+
+### Post-Hoc Comparison
+
+#### Lighting of the Driving Environment
+
+```{r}
+
+# OBTAIN ESTIMATED MARGINAL MEANS (LIGHTING) - PAIRWISE 
+lighting_emmeans <- emmeans (lmm_final_model_PercentageOfGlanceRightPeriphery, ~ LightingConditions)
+lighting_emmeans
+# PAIRWISE
+pairwise_lighting <- pairs (lighting_emmeans, adjust = "bonferroni")
+pairwise_lighting
+
+```
+
+#### Level of Automation
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION) - PAIRWISE 
+automation_emmeans <- emmeans (lmm_final_model_PercentageOfGlanceRightPeriphery, ~ AutomationLevel)
+automation_emmeans
+# PAIRWISE
+pairwise_automation <- pairs (automation_emmeans, adjust = "bonferroni")
+pairwise_automation
+```
+
+##### Explanation (Level of Automation)
+
+-   L2 automation increased glance time towards right periphery significantly by 4.09 % compared to manual driving (L2 Automation: EMM = 20.0 %, SE = 0.77; Manual Driving: EMM = 15.9 %, SE = 0.73).
+
+#### Run Number
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (RUN NUMBER) - PAIRWISE 
+run_emmeans <- emmeans (lmm_final_model_PercentageOfGlanceRightPeriphery, ~ RunNum)
+run_emmeans
+# PAIRWISE
+pairwise_run <- pairs (run_emmeans, adjust = "bonferroni")
+pairwise_run
+```
+##### Explanation (Run Number)
+- Drivers' percentage of glance time towards right periphery reduced significantly from Run 1 to Run 2 (by 5.80 %, t = 4.54, p < .001) and Run 3 (by 6.46 %, t = 5.08, p < .001).
+- Drivers' percentage of glance time towards right periphery increased significantly from Run 2 to Run 4 (by 4.15 %, t = -3.18, p = .011), and from Run 3 to Run 4 (by 4.81 %, t = -3.71, p = .002)
+
+
+#### Interaction Effect (Automation\*Lighting)
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION*LIGHTTING) - PAIRWISE 
+interaction_automation_lighting_emmeans <- emmeans (lmm_final_model_PercentageOfGlanceRightPeriphery, ~ AutomationLevel*LightingConditions)
+interaction_automation_lighting_emmeans
+
+# PAIRWISE
+pairwise_interaction <- pairs (interaction_automation_lighting_emmeans, adjust = "bonferroni")
+pairwise_interaction
+```
+
+
+
+
