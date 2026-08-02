@@ -1,0 +1,446 @@
+---
+title: "Attention towards the different types of ambient traffic"
+author: "Yee Thung Lee"
+date: "2026-04-24"
+output: html_document
+---
+
+# LOAD LIBRARIES
+```{r setup, include=FALSE}
+# LOAD LIBRARIES
+suppressPackageStartupMessages({
+  library(tidyr)
+  library(dplyr)
+  library (ggplot2)
+  library (lmerTest)
+  library (emmeans)
+  library (lme4)
+  library (viridis)
+  library (readxl)
+})
+```
+
+# READ EXCEL SHEET
+```{r}
+# LOAD EXCEL SHEET
+# SUMMARY OF GLANCE DATA
+SummaryOfGlanceData <- read_excel(
+  "C:\\Users\\tsytl\\Desktop\\SUMMARY OF GLANCE.xlsx",
+  sheet = "Sheet1"
+)
+
+head (SummaryOfGlanceData)
+```
+
+## DEFINE VARIABLE FOR DATA ANALYSIS
+```{r}
+# RENAME COLUMNS
+SummaryOfGlanceData <- SummaryOfGlanceData %>%
+  rename(
+    LightingConditions = `Lighting Conditions`,
+    AutomationLevel = `Automation Level`,
+    SubNum = `Sub Number`,
+    RunNum = `Run Number`,
+    ParticipantID = `Participant Name`
+  )
+
+# RENAME COLUMNS FOR THE NUMBER OF GLANCE DATA
+## I NEED THE FOLLOWING DATA FOR FURTHER ANALYSIS
+### BEHAVIOURAL PREDICTION (BP) ELEMENT - WALKING PEDESTRIAN AND CYCLIST
+### ENVIRONMENTAL PREDICTION (EP) ELEMENT - PARKED CARS AND PARKED TRUCKS
+### LEFT - LEFT
+### RIGHT - RIGHT
+### 8 COLUMNS RENAME
+
+SummaryOfGlanceData <- SummaryOfGlanceData %>%
+  rename(
+    NoOfGlance_LeftAmbientPedestrian_LeftPeriphery = `No Of Glances - Left Ambient Pedestrian - Left Periphery`,
+    NoOfGlance_LeftCyclist_LeftPeriphery = `No Of Glances - Left Cyclist - Left Periphery`,
+    NoOfGlance_LeftParkedCar_LeftPeriphery = `No Of Glances - Left Parked Car - Left Periphery`,
+    NoOfGlance_LeftParkedTruck_LeftPeriphery = `No Of Glances - Left Parked Truck - Left Periphery`,
+    NoOfGlance_RightAmbientPedestrian_RightPeriphery = `No Of Glances - Right Ambient Pedestrian - Right Periphery`,
+    NoOfGlance_RightCyclist_RightPeriphery = `No Of Glances - Right Cyclist - Right Periphery`,
+    NoOfGlance_RightParkedCar_RightPeriphery = `No Of Glances - Right Parked Car - Right Periphery`,
+    NoOfGlance_RightParkedTruck_RightPeriphery = `No Of Glances - Right Parked Truck - Right Periphery`,
+  )
+
+# RENAME COLUMNS FOR THE MEAN GLANCE DURATION DATA
+SummaryOfGlanceData <- SummaryOfGlanceData %>%
+  rename(
+    MGD_LeftAmbientPedestrian_LeftPeriphery = `MGD - Left Ambient Pedestrian - Left Periphery`,
+    MGD_LeftCyclist_LeftPeriphery = `MGD - Left Cyclist - Left Periphery`,
+    MGD_LeftParkedCar_LeftPeriphery = `MGD - Left Parked Car - Left Periphery`,
+    MGD_LeftParkedTruck_LeftPeriphery = `MGD - Left Parked Truck - Left Periphery`,
+    MGD_RightAmbientPedestrian_RightPeriphery = `MGD - Right Ambient Pedestrian - Right Periphery`,
+    MGD_RightCyclist_RightPeriphery = `MGD - Right Cyclist - Right Periphery`,
+    MGD_RightParkedCar_RightPeriphery = `MGD - Right Parked Car - Right Periphery`,
+    MGD_RightParkedTruck_RightPeriphery = `MGD - Right Parked Truck - Right Periphery`,
+  )
+```
+
+## FILTER THE DATASET TO ONLY HAVE THIS COLUMNS INCLUDED
+```{r}
+SummaryOfGlanceDataClean <- SummaryOfGlanceData %>%
+  select(
+    LightingConditions,
+    AutomationLevel,
+    SubNum,
+    RunNum,
+    ParticipantID,
+    
+    # Glance counts
+    NoOfGlance_LeftAmbientPedestrian_LeftPeriphery,
+    NoOfGlance_LeftCyclist_LeftPeriphery,
+    NoOfGlance_LeftParkedCar_LeftPeriphery,
+    NoOfGlance_LeftParkedTruck_LeftPeriphery,
+    NoOfGlance_RightAmbientPedestrian_RightPeriphery,
+    NoOfGlance_RightCyclist_RightPeriphery,
+    NoOfGlance_RightParkedCar_RightPeriphery,
+    NoOfGlance_RightParkedTruck_RightPeriphery,
+    
+    # Mean glance duration
+    MGD_LeftAmbientPedestrian_LeftPeriphery,
+    MGD_LeftCyclist_LeftPeriphery,
+    MGD_LeftParkedCar_LeftPeriphery,
+    MGD_LeftParkedTruck_LeftPeriphery,
+    MGD_RightAmbientPedestrian_RightPeriphery,
+    MGD_RightCyclist_RightPeriphery,
+    MGD_RightParkedCar_RightPeriphery,
+    MGD_RightParkedTruck_RightPeriphery
+  )
+
+```
+
+## REORGANISE DATA FOR ANALYSIS
+```{r}
+SummaryOfGlanceDataCleanForDataAnalysis <- SummaryOfGlanceDataClean %>%
+  pivot_longer(
+    cols = starts_with("NoOfGlance") | starts_with("MGD"),
+    names_to = c("Measure", "Condition"),
+    names_pattern = "^(NoOfGlance|MGD)_(.*)$",
+    values_to = "Value"
+  )
+
+
+SummaryOfGlanceDataCleanForDataAnalysis <- SummaryOfGlanceDataCleanForDataAnalysis %>%
+  mutate(
+    Side = ifelse(grepl("Left", Condition), "Left", "Right"),
+    Element = case_when(
+      grepl("Cyclist", Condition) ~ "Cyclist",
+      grepl("Pedestrian", Condition) ~ "Pedestrian",
+      grepl("ParkedCar", Condition) ~ "ParkedCar",
+      grepl("ParkedTruck", Condition) ~ "ParkedTruck"
+    ),
+    ElementType = case_when(
+      Element %in% c("Cyclist", "Pedestrian") ~ "Behavioural Prediction (BP)",
+      Element %in% c("ParkedCar", "ParkedTruck") ~ "Inanimate Object (IO)"
+    )
+  )
+
+
+```
+
+
+### REORGANISE THE DATA
+
+```{r cars}
+bp_ep_data <- SummaryOfGlanceDataCleanForDataAnalysis %>%
+  group_by(ParticipantID, SubNum, RunNum, LightingConditions, AutomationLevel, Side, ElementType, Measure) %>%
+  summarise(
+    Value = mean(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+bp_ep_glance <- bp_ep_data %>%
+  filter(Measure == "NoOfGlance")
+
+bp_ep_mgd <- bp_ep_data %>%
+  filter(Measure == "MGD")
+```
+
+### EXPORT DATA
+
+```{r pressure, echo=FALSE}
+## MEAN GLANCE DURATION
+## FILTER DATA TO LEFT ONLY
+left_MGD_data <- bp_ep_mgd %>%
+  filter(Side == "Left")
+
+## FILTER DATA TO RIGHT ONLY
+right_MGD_data <- bp_ep_mgd %>%
+  filter(Side == "Right")
+```
+
+
+
+```{r}
+# FINAL MODEL
+# LIGHT, AUTOMATION, ELEMENT TYPE, LIGHT*AUTOMATION, ELEMENTTYPE*LIGHTING, ELEMENTTYPE*AUTO
+
+glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT <- glmer(Value~ LightingConditions + AutomationLevel  + ElementType + LightingConditions*AutomationLevel + LightingConditions*ElementType + AutomationLevel*ElementType + (1|SubNum), family = Gamma (link = "log"), data = left_MGD_data)
+
+summary (glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT)
+```
+
+```{r}
+library (performance)
+# CALCULATE R-SQUARED VALUES 
+r2_values <- r2(glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT)
+print (r2_values)
+```
+
+
+### Post-Hoc Comparison
+
+#### Lighting of the Driving Environment
+
+```{r}
+
+# OBTAIN ESTIMATED MARGINAL MEANS (LIGHTING) - PAIRWISE 
+lighting_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT, ~ LightingConditions, type = "response")
+lighting_emmeans
+# PAIRWISE
+pairwise_lighting <- pairs (lighting_emmeans, adjust = "bonferroni", type = "response")
+pairwise_lighting
+
+```
+
+#### Level of Automation
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION) - PAIRWISE 
+automation_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT, ~ AutomationLevel, type = "response")
+automation_emmeans
+# PAIRWISE
+pairwise_automation <- pairs (automation_emmeans, adjust = "bonferroni", type = "response")
+pairwise_automation
+```
+
+#### Element Type 
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION) - PAIRWISE 
+elementtype_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT, ~ ElementType, type = "response")
+elementtype_emmeans
+# PAIRWISE
+pairwise_elementtype <- pairs (elementtype_emmeans, adjust = "bonferroni", type = "response")
+pairwise_elementtype
+```
+
+#### Plots
+```{r}
+library(emmeans)
+
+emm1 <- emmeans(
+  glmm_final_model_gamma_MeanGlanceDurationLEFTLEFT,
+  ~ LightingConditions * AutomationLevel * ElementType
+)
+
+emm_df_1 <- as.data.frame(
+  summary(emm1, type = "response")
+)
+
+emm_df_1
+
+
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Create ordered grouping variable
+emm_df_1 <- emm_df_1 %>%
+  mutate(Group = factor(
+    paste(AutomationLevel, LightingConditions),
+    levels = c(
+      "Manual Driving Daytime",
+      "Manual Driving AfterDark",
+      "L2 Automation Daytime",
+      "L2 Automation AfterDark"
+    )
+  ))
+
+# Plot
+plot_1 <- ggplot(emm_df_1, aes(x = Group, y = response, fill = ElementType)) +
+  
+  # bars
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  
+  # error bars
+  geom_errorbar(
+    aes(ymin = asymp.LCL, ymax = asymp.UCL),
+    position = position_dodge(width = 0.8),
+    width = 0.2
+  ) +
+  
+  # color mapping
+  scale_fill_manual(values = c(
+    "Behavioural Prediction (BP)" = "#D55E00", # Vermillion (Warm/Active)
+    "Environmental Prediction (EP)" = "#56B4E9"  # Sky Blue (Cool/Static)
+  )) +
+  scale_y_continuous(breaks = c(0, 250, 500, 750, 1000)) +
+  labs(x = "", 
+    y = "Predicted Mean Glance Duration \n for Left Periphery (milliseconds)",
+    fill = "Element Type"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_text(face = "bold", size = 12),
+    legend.text = element_text(face = "bold", size = 10),
+    axis.title.y = element_text(face = "bold", colour = "black", size = 12),
+    axis.text.y = element_text(face = "bold", color = "black", size = 12),
+    panel.grid = element_blank(),    # remove grid
+    panel.background = element_blank(), # remove panel background
+    plot.background = element_blank(),  # remove outer background
+    axis.ticks.x = element_line(color = "black"),
+    axis.ticks.y = element_line(color = "black"),
+    axis.line = element_line(color = "black"))
+
+plot_1
+```
+
+
+```{r}
+# FINAL MODEL
+# LIGHT, AUTOMATION, ELEMENT TYPE, LIGHT*AUTOMATION, ELEMENTTYPE*LIGHTING, ELEMENTTYPE*AUTO
+
+glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT <- glmer(Value~ LightingConditions + AutomationLevel  + ElementType + LightingConditions*AutomationLevel + LightingConditions*ElementType + AutomationLevel*ElementType + (1|SubNum), family = Gamma (link = "log"), data = right_MGD_data)
+
+summary (glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT)
+```
+
+
+```{r}
+library (performance)
+# CALCULATE R-SQUARED VALUES 
+r2_values <- r2(glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT)
+print (r2_values)
+```
+
+
+### Post-Hoc Comparison
+
+#### Lighting of the Driving Environment
+
+```{r}
+
+# OBTAIN ESTIMATED MARGINAL MEANS (LIGHTING) - PAIRWISE 
+lighting_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT, ~ LightingConditions, type = "response")
+lighting_emmeans
+# PAIRWISE
+pairwise_lighting <- pairs (lighting_emmeans, adjust = "bonferroni", type = "response")
+pairwise_lighting
+
+```
+
+
+#### Level of Automation
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION) - PAIRWISE 
+automation_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT, ~ AutomationLevel, type = "response")
+automation_emmeans
+# PAIRWISE
+pairwise_automation <- pairs (automation_emmeans, adjust = "bonferroni", type = "response")
+pairwise_automation
+```
+
+
+
+#### Element Type 
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION) - PAIRWISE 
+elementtype_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT, ~ ElementType, type = "response")
+elementtype_emmeans
+# PAIRWISE
+pairwise_elementtype <- pairs (elementtype_emmeans, adjust = "bonferroni", type = "response")
+pairwise_elementtype
+```
+
+#### Interaction Effect (Element\*Lighting)
+
+```{r}
+# OBTAIN ESTIMATED MARGINAL MEANS (AUTOMATION*LIGHTTING) - PAIRWISE 
+interaction_element_lighting_emmeans <- emmeans (glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT, ~ ElementType*LightingConditions, type = "response")
+interaction_element_lighting_emmeans
+
+# PAIRWISE
+pairwise_interaction <- pairs (interaction_element_lighting_emmeans, adjust = "bonferroni", type = "response")
+pairwise_interaction
+```
+
+
+#### Plots
+```{r}
+library(emmeans)
+
+emm2 <- emmeans(
+  glmm_final_model_gamma_MeanGlanceDurationRIGHTRIGHT,
+  ~ LightingConditions * AutomationLevel * ElementType
+)
+
+emm_df_2 <- as.data.frame(
+  summary(emm2, type = "response")
+)
+
+emm_df_2
+
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Create ordered grouping variable
+emm_df_2 <- emm_df_2 %>%
+  mutate(Group = factor(
+    paste(AutomationLevel, LightingConditions),
+    levels = c(
+      "Manual Driving Daytime",
+      "Manual Driving AfterDark",
+      "L2 Automation Daytime",
+      "L2 Automation AfterDark"
+    )
+  ))
+
+# Plot
+plot_2 <- ggplot(emm_df_2, aes(x = Group, y = response, fill = ElementType)) +
+  
+  # bars
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  
+  # error bars
+  geom_errorbar(
+    aes(ymin = asymp.LCL, ymax = asymp.UCL),
+    position = position_dodge(width = 0.8),
+    width = 0.2
+  ) +
+  
+  # color mapping
+  scale_fill_manual(values = c(
+    "Behavioural Prediction (BP)" = "#D55E00", # Vermillion (Warm/Active)
+    "Environmental Prediction (EP)" = "#56B4E9"  # Sky Blue (Cool/Static)
+  )) +
+  ylim (0, 1000) + 
+  labs(x = "", 
+    y = "Predicted Mean Glance Duration \n for Right Periphery (milliseconds)",
+    fill = "Element Type"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_text(face = "bold", size = 12),
+    legend.text = element_text(face = "bold", size = 10),
+    axis.title.y = element_text(face = "bold", colour = "black", size = 12),
+    axis.text.y = element_text(face = "bold", color = "black", size = 12),
+    panel.grid = element_blank(),    # remove grid
+    panel.background = element_blank(), # remove panel background
+    plot.background = element_blank(),  # remove outer background
+    axis.ticks.x = element_line(color = "black"),
+    axis.ticks.y = element_line(color = "black"),
+    axis.line = element_line(color = "black"))
+
+plot_2
+```
+
+
